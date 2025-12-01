@@ -47,13 +47,32 @@ jobs:
       - name: Get PR number, username, and fork repo
         id: getpr
         run: |
-          echo "Finding PR and username for branch: ${{ github.event.workflow_run.head_branch }}"
-          PR_JSON=$(gh pr list --state open --json number,author,headRepositoryOwner,headRefName -L 1 --search "head:${{ github.event.workflow_run.head_branch }}")
-          PR_NUMBER=$(echo "$PR_JSON" | jq -r '.[0].number')
-          USERNAME=$(echo "$PR_JSON" | jq -r '.[0].author.login')
-          FORK_OWNER=$(echo "$PR_JSON" | jq -r '.[0].headRepositoryOwner.login')
+          echo "Finding PR for commit: ${{ github.event.workflow_run.head_sha }}"
+          echo "Branch: ${{ github.event.workflow_run.head_branch }}"
+          
+          # Get all open PRs with their head SHA and branch info
+          PR_JSON=$(gh pr list --state open --json number,author,headRepositoryOwner,headRefName,headRefOid)
+          
+          # Find the PR that matches both the commit SHA and branch name
+          # First try to match by SHA (most reliable)
+          MATCHING_PR=$(echo "$PR_JSON" | jq --arg sha "${{ github.event.workflow_run.head_sha }}" --arg branch "${{ github.event.workflow_run.head_branch }}" '
+            .[] | select(.headRefOid == $sha and .headRefName == $branch)
+          ')
+          
+          # If no exact SHA match, fall back to branch name with most recent update
+          if [ -z "$MATCHING_PR" ] || [ "$MATCHING_PR" = "null" ]; then
+            echo "No exact SHA match found, searching by branch name..."
+            MATCHING_PR=$(gh pr list --state open --json number,author,headRepositoryOwner,headRefName,updatedAt --search "head:${{ github.event.workflow_run.head_branch }}" --limit 100 | jq --arg branch "${{ github.event.workflow_run.head_branch }}" '
+              [.[] | select(.headRefName == $branch)] | sort_by(.updatedAt) | reverse | .[0]
+            ')
+          fi
+          
+          PR_NUMBER=$(echo "$MATCHING_PR" | jq -r '.number')
+          USERNAME=$(echo "$MATCHING_PR" | jq -r '.author.login')
+          FORK_OWNER=$(echo "$MATCHING_PR" | jq -r '.headRepositoryOwner.login')
           REPO_NAME=$(basename "${{ github.repository }}")
           FORK_REPO="$FORK_OWNER/$REPO_NAME"
+          
           echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
           echo "username=$USERNAME" >> $GITHUB_OUTPUT
           echo "fork_repo=$FORK_REPO" >> $GITHUB_OUTPUT

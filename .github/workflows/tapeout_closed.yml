@@ -16,6 +16,6 @@ jobs:
         with:
 #            Thank you for your pull request! :wave:
           message: |
-            This fabrication run is closed. Please submit your design in the next fabrication run.
+            This fabrication run is closed. Please submit your design in the next fabrication run.  https://github.com/SiEPIC/openEBL-2026-02
           comment_tag: welcome-message
 
